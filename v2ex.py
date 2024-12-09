@@ -4,6 +4,7 @@ import sys
 import os
 import json
 from datetime import datetime
+import re
 
 # 根据操作系统选择合适的模块
 if os.name == 'nt':  # Windows
@@ -132,10 +133,51 @@ class V2exCLI:
             # 获取评论列表
             comments = soup.find_all('div', class_='cell', id=lambda x: x and x.startswith('r_'))
             
-            if topic_content:
-                self.clear_screen()  # 清屏后显示详情
+            # 构建两层评论结构
+            top_comments = []  # 顶层评论
+            reply_comments = {}  # 回复的评论，key 是被回复评论的编号
+            
+            # 分类评论
+            for comment in comments:
+                no_elem = comment.find('span', class_='no')
+                comment_no = no_elem.text if no_elem else '0'
                 
-                # 显���主题内容
+                username_elem = comment.find('strong')
+                username = username_elem.text if username_elem else '匿名用户'
+                
+                time_elem = comment.find('span', class_='ago')
+                comment_time = time_elem.text if time_elem else '未知时间'
+                
+                content_elem = comment.find('div', class_='reply_content')
+                content = content_elem.text.strip() if content_elem else '无内容'
+                
+                comment_data = {
+                    'no': comment_no,
+                    'username': username,
+                    'time': comment_time,
+                    'content': content
+                }
+                
+                # 检查是否是回复
+                if content_elem and '@' in content:
+                    # 查找被回复的评论
+                    for prev_comment in comments:
+                        prev_username = prev_comment.find('strong').text if prev_comment.find('strong') else ''
+                        if f'@{prev_username}' in content:
+                            prev_no = prev_comment.find('span', class_='no').text
+                            if prev_no not in reply_comments:
+                                reply_comments[prev_no] = []
+                            reply_comments[prev_no].append(comment_data)
+                            break
+                    else:
+                        top_comments.append(comment_data)
+                else:
+                    top_comments.append(comment_data)
+            
+            if topic_content:
+                self.clear_screen()
+                
+                # 显示主题内容
                 print('\n' + '=' * 160)
                 print(f"标题: {topic['title']}")
                 print(f"\n{topic_content.text.strip()}\n")
@@ -146,34 +188,27 @@ class V2exCLI:
                 if total_comments > 0:
                     print(f"\n评论列表 (共 {total_comments} 条评论):\n")
                     
-                    for comment in comments:
-                        print('-' * 80)
-                        # 获取用户名
-                        username_elem = comment.find('strong')
-                        username = username_elem.text if username_elem else '匿名用户'
-                        
-                        # 获取评论时间
-                        time_elem = comment.find('span', class_='ago')
-                        comment_time = time_elem.text if time_elem else '未知时间'
-                        
-                        # 获取评论序号
-                        no_elem = comment.find('span', class_='no')
-                        comment_no = no_elem.text if no_elem else '0'
-                        
-                        # 获取评论内容
-                        content_elem = comment.find('div', class_='reply_content')
-                        content = content_elem.text.strip() if content_elem else '无内容'
-                        
-                        # 显示评论头部信息
-                        print(f"#{comment_no} | 评论者: {username} | {comment_time}")
-                        
-                        # 显示评论内容（保持缩进）
-                        content_lines = content.split('\n')
+                    # 显示顶层评论及其回复
+                    for comment in top_comments:
+                        # 显示顶层评论
+                        print('-' * 80)  # 顶层评论之间的分隔线
+                        print(f"#{comment['no']} | 评论者: {comment['username']} | {comment['time']}")
+                        content_lines = comment['content'].split('\n')
                         for line in content_lines:
                             print(f"  {line}")
                         
-                        print('\n')
-                        
+                        # 显示回复（如果有）
+                        if comment['no'] in reply_comments:
+                            for reply in reply_comments[comment['no']]:
+                                # 回复缩进 8 个空格
+                                print('     |')
+                                print('     |->')
+                                print(f"        #{reply['no']} | 评论者: {reply['username']} | {reply['time']}")
+                                content_lines = reply['content'].split('\n')
+                                for line in content_lines:
+                                    print(f"          {line}")
+                        print('\n\n\n')
+                    
                 else:
                     print('\n暂无评论')
                     print('=' * 80)
@@ -182,7 +217,6 @@ class V2exCLI:
                 while True:
                     user_input = input('\n输入 b 返回主题列表: ').strip().lower()
                     if user_input == 'b':
-                        # 返回主题列表时重新显示
                         self.display_topics()
                         return
             else:
