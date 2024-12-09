@@ -13,6 +13,8 @@ class V2exCLI:
         self.topics = []  # 存储主题列表
         self.cache_file = 'v2ex_cache.json'  # 缓存文件路径
         self.load_cache()  # 初始化时加载缓存
+        self.page_size = 12  # 每页显示的主题数量
+        self.current_page = 1  # 当前页码
         
     def save_cache(self):
         """保存主题列表到缓存文件"""
@@ -47,11 +49,22 @@ class V2exCLI:
         """显示主题列表"""
         self.clear_screen()
         print('\n主题列表:\n')
-        for index, topic in enumerate(self.topics, 1):
-            print(f'[{index}] 标题: {topic["title"]} {topic["reply"]}')
+        
+        # 计算当前页的起始和结束索引
+        start_idx = (self.current_page - 1) * self.page_size
+        end_idx = start_idx + self.page_size
+        page_topics = self.topics[start_idx:end_idx]
+        
+        # 显示当前页的主题
+        for idx, topic in enumerate(page_topics, start_idx + 1):
+            print(f'[{idx}] 标题: {topic["title"]} {topic["reply"]}')
             print(f'    链接: {topic["url"]}')
             print('-' * 80)
-    
+            
+        # 显示分页信息
+        total_pages = (len(self.topics) + self.page_size - 1) // self.page_size
+        print(f'\n当前第 {self.current_page}/{total_pages} 页')
+        
     def get_topics(self):
         try:
             # 获取网页内容
@@ -149,9 +162,20 @@ class V2exCLI:
         elif command == 'b':
             self.display_topics()
         elif command == '>':
-            print('下一页功能待实现')  # TODO: 实现翻页功能
+            # 下一页
+            total_pages = (len(self.topics) + self.page_size - 1) // self.page_size
+            if self.current_page < total_pages:
+                self.current_page += 1
+                self.display_topics()
+            else:
+                print('已经是最后一页了')
         elif command == '<':
-            print('上一页功能待实现')  # TODO: 实现翻页功能
+            # 上一页
+            if self.current_page > 1:
+                self.current_page -= 1
+                self.display_topics()
+            else:
+                print('已经是第一页了')
         elif command == 'r':
             self.clear_screen()
             print('\n刷新主题列表...\n')
