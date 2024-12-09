@@ -5,6 +5,13 @@ import os
 import json
 from datetime import datetime
 
+# 根据操作系统选择合适的模块
+if os.name == 'nt':  # Windows
+    import msvcrt
+else:  # Unix/Mac
+    import tty
+    import termios
+
 class V2exCLI:
     def __init__(self):
         self.headers = {
@@ -144,80 +151,111 @@ class V2exCLI:
         except Exception as e:
             print(f'解析主题详情失败: {e}')
 
-    def handle_user_input(self, user_input):
+    def handle_user_input(self, char):
         """处理用户输入的命令或主题编号"""
-        command = user_input.lower().strip()
+        # 处理单字符命令（无需回车的命令）
+        if char in ['>', '<']:
+            if char == '>':
+                # 下一页
+                total_pages = (len(self.topics) + self.page_size - 1) // self.page_size
+                if self.current_page < total_pages:
+                    self.current_page += 1
+                    self.display_topics()
+                else:
+                    print('已经是最后一页了')
+                return True
+            elif char == '<':
+                # 上一页
+                if self.current_page > 1:
+                    self.current_page -= 1
+                    self.display_topics()
+                else:
+                    print('已经是第一页了')
+                return True
+
+        # 处理需要回车的命令
+        command = ''
+        while char != '\r' and char != '\n':
+            if char == '\x03':  # Ctrl+C
+                raise KeyboardInterrupt
+            sys.stdout.write(char)
+            sys.stdout.flush()
+            command += char
+            char = self.get_char()
+        print()  # 换行
+        
+        command = command.lower().strip()
         
         # 命令处理
-        if command == 'help':
+        if command == 'h':
             self.clear_screen()
             print('\n可用命令:')
             print('数字    - 输入主题编号查看详情')
-            print('help    - 显示帮助信息')
+            print('h       - 显示帮助信息')
             print('b       - 返回主题列表')
-            print('>       - 查看下一页')
-            print('<       - 查看上一页')
+            print('>       - 查看下一页（无需回车）')
+            print('<       - 查看上一页（无需回车）')
             print('r       - 刷新页面')
             print('q       - 退出程序\n')
+            print('--------------------------------')
+            print('b       - 返回主题列表\n')
         elif command == 'b':
             self.display_topics()
-        elif command == '>':
-            # 下一页
-            total_pages = (len(self.topics) + self.page_size - 1) // self.page_size
-            if self.current_page < total_pages:
-                self.current_page += 1
-                self.display_topics()
-            else:
-                print('已经是最后一页了')
-        elif command == '<':
-            # 上一页
-            if self.current_page > 1:
-                self.current_page -= 1
-                self.display_topics()
-            else:
-                print('已经是第一页了')
         elif command == 'r':
             self.clear_screen()
             print('\n刷新主题列表...\n')
-            # 删除缓存文件
             if os.path.exists(self.cache_file):
                 try:
                     os.remove(self.cache_file)
                     print('已删除缓存文件')
                 except Exception as e:
                     print(f'删除缓存文件失败: {e}', file=sys.stderr)
-            # 清空当前主题列表
             self.topics.clear()
-            # 重新获取主题列表
             self.get_topics()
         elif command == 'q':
             self.clear_screen()
             return False
-        else:
+        elif command:  # 确保命令不为空
             try:
-                topic_index = int(user_input)
+                topic_index = int(command)
                 self.get_topic_detail(topic_index)
             except ValueError:
-                print('请输入有效的主题编号或命令！输入 help 查看可用命令')
+                print('请输入有效的主题编号或命令！输入 h 查看可用命令')
         
         return True
+
+    def get_char(self):
+        """获取单个字符输入"""
+        if os.name == 'nt':  # Windows
+            return msvcrt.getch().decode('utf-8')
+        else:  # Unix/Mac
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return ch
 
     def run(self):
         self.clear_screen()
         print('正在加载 V2EX 主题列表...\n')
         
-        # 如果没有缓存或缓存加载失败，则获取新数据
         if not self.topics:
             if not self.get_topics():
                 return
         else:
             self.display_topics()
         
+        print('\n提示：使用 < 和 > 键进行翻页，输入 h + 回车 查看帮助\n')
+        
         while True:
             try:
-                user_input = input('\n输入主题编号查看详情，输入 help 查看所有命令，输入 q 退出: ').strip()
-                if not self.handle_user_input(user_input):
+                char = self.get_char()
+                if not self.handle_user_input(char):
                     break
+                    
             except KeyboardInterrupt:
                 self.clear_screen()
                 break
