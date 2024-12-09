@@ -128,13 +128,55 @@ class V2exCLI:
             
             # 获取主题内容
             topic_content = soup.find('div', class_='topic_content')
+            
+            # 获取评论列表
+            comments = soup.find_all('div', class_='cell', id=lambda x: x and x.startswith('r_'))
+            
             if topic_content:
                 self.clear_screen()  # 清屏后显示详情
-                print('\n' + '=' * 80)
+                
+                # 显���主题内容
+                print('\n' + '=' * 160)
                 print(f"标题: {topic['title']}")
-                print('-' * 80)
-                print(topic_content.text.strip())
-                print('=' * 80)
+                print(f"\n{topic_content.text.strip()}\n")
+                print('=' * 160)
+                
+                # 显示评论
+                total_comments = len(comments)
+                if total_comments > 0:
+                    print(f"\n评论列表 (共 {total_comments} 条评论):\n")
+                    
+                    for comment in comments:
+                        print('-' * 80)
+                        # 获取用户名
+                        username_elem = comment.find('strong')
+                        username = username_elem.text if username_elem else '匿名用户'
+                        
+                        # 获取评论时间
+                        time_elem = comment.find('span', class_='ago')
+                        comment_time = time_elem.text if time_elem else '未知时间'
+                        
+                        # 获取评论序号
+                        no_elem = comment.find('span', class_='no')
+                        comment_no = no_elem.text if no_elem else '0'
+                        
+                        # 获取评论内容
+                        content_elem = comment.find('div', class_='reply_content')
+                        content = content_elem.text.strip() if content_elem else '无内容'
+                        
+                        # 显示评论头部信息
+                        print(f"#{comment_no} | 评论者: {username} | {comment_time}")
+                        
+                        # 显示评论内容（保持缩进）
+                        content_lines = content.split('\n')
+                        for line in content_lines:
+                            print(f"  {line}")
+                        
+                        print('\n')
+                        
+                else:
+                    print('\n暂无评论')
+                    print('=' * 80)
                 
                 # 等待用户输入 b 返回
                 while True:
