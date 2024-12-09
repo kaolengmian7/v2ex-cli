@@ -2,6 +2,8 @@ import requests
 from bs4 import BeautifulSoup
 import sys
 import os
+import json
+from datetime import datetime
 
 class V2exCLI:
     def __init__(self):
@@ -9,7 +11,34 @@ class V2exCLI:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         self.topics = []  # 存储主题列表
+        self.cache_file = 'v2ex_cache.json'  # 缓存文件路径
+        self.load_cache()  # 初始化时加载缓存
         
+    def save_cache(self):
+        """保存主题列表到缓存文件"""
+        cache_data = {
+            'timestamp': datetime.now().isoformat(),
+            'topics': self.topics
+        }
+        try:
+            with open(self.cache_file, 'w', encoding='utf-8') as f:
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f'保存缓存失败: {e}', file=sys.stderr)
+
+    def load_cache(self):
+        """从缓存文件加载主题列表"""
+        try:
+            if os.path.exists(self.cache_file):
+                with open(self.cache_file, 'r', encoding='utf-8') as f:
+                    cache_data = json.load(f)
+                    self.topics = cache_data['topics']
+                    print('已从缓存加载主题列表')
+                    return True
+        except Exception as e:
+            print(f'读取缓存失败: {e}', file=sys.stderr)
+        return False
+
     def clear_screen(self):
         """清空屏幕"""
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -49,6 +78,9 @@ class V2exCLI:
                     url = 'https://www.v2ex.com' + topic_link['href']
                     # 存储主题信息
                     self.topics.append({'title': title, 'url': url, 'reply': reply_text})
+            
+            # 保存到缓存
+            self.save_cache()
             
             # 显示主题列表
             self.display_topics()
@@ -99,45 +131,71 @@ class V2exCLI:
         except Exception as e:
             print(f'解析主题详情失败: {e}')
 
+    def handle_user_input(self, user_input):
+        """处理用户输入的命令或主题编号"""
+        command = user_input.lower().strip()
+        
+        # 命令处理
+        if command == 'help':
+            self.clear_screen()
+            print('\n可用命令:')
+            print('数字    - 输入主题编号查看详情')
+            print('help    - 显示帮助信息')
+            print('b       - 返回主题列表')
+            print('>       - 查看下一页')
+            print('<       - 查看上一页')
+            print('r       - 刷新页面')
+            print('q       - 退出程序\n')
+        elif command == 'b':
+            self.display_topics()
+        elif command == '>':
+            print('下一页功能待实现')  # TODO: 实现翻页功能
+        elif command == '<':
+            print('上一页功能待实现')  # TODO: 实现翻页功能
+        elif command == 'r':
+            self.clear_screen()
+            print('\n刷新主题列表...\n')
+            # 删除缓存文件
+            if os.path.exists(self.cache_file):
+                try:
+                    os.remove(self.cache_file)
+                    print('已删除缓存文件')
+                except Exception as e:
+                    print(f'删除缓存文件失败: {e}', file=sys.stderr)
+            # 清空当前主题列表
+            self.topics.clear()
+            # 重新获取主题列表
+            self.get_topics()
+        elif command == 'q':
+            self.clear_screen()
+            return False
+        else:
+            try:
+                topic_index = int(user_input)
+                self.get_topic_detail(topic_index)
+            except ValueError:
+                print('请输入有效的主题编号或命令！输入 help 查看可用命令')
+        
+        return True
+
     def run(self):
-        self.clear_screen()  # 启动时清屏
-        print('正在获取 V2EX 主题列表...\n')
-        if not self.get_topics():
-            return
+        self.clear_screen()
+        print('正在加载 V2EX 主题列表...\n')
+        
+        # 如果没有缓存或缓存加载失败，则获取新数据
+        if not self.topics:
+            if not self.get_topics():
+                return
+        else:
+            self.display_topics()
         
         while True:
             try:
-                user_input = input('\n输入主题编号查看详情，输入 / 进入命令模式，输入 q 退出: ').strip()
-                
-                if user_input.lower() == 'q':
-                    self.clear_screen()  # 退出时清屏
+                user_input = input('\n输入主题编号查看详情，输入 help 查看所有命令，输入 q 退出: ').strip()
+                if not self.handle_user_input(user_input):
                     break
-                elif user_input == '/':
-                    command = input('命令模式 > ').strip()
-                    if command.lower() == 'refresh':
-                        self.clear_screen()  # 刷新前清屏
-                        print('\n刷新主题列表...\n')
-                        self.get_topics()
-                    elif command.lower() == 'help':
-                        self.clear_screen()  # 显示帮助前清屏
-                        print('\n可用命令:')
-                        print('refresh - 刷新主题列表')
-                        print('help    - 显示帮助信息')
-                        print('exit    - 退出命令模式\n')
-                    elif command.lower() == 'exit':
-                        self.display_topics()  # 退出命令模式时重新显示主题列表
-                        continue
-                    else:
-                        print('未知命令，输入 help 查看可用命令')
-                else:
-                    try:
-                        topic_index = int(user_input)
-                        self.get_topic_detail(topic_index)
-                    except ValueError:
-                        print('请输入有效的主题编号!')
-                        
             except KeyboardInterrupt:
-                self.clear_screen()  # Ctrl+C 退出时清屏
+                self.clear_screen()
                 break
             except Exception as e:
                 print(f'发生错误: {e}')
