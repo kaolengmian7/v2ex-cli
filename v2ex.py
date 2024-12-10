@@ -212,7 +212,7 @@ class V2exCLI:
                 else:
                     print('\n暂无评论')
                     print('=' * 80)
-                
+
                 # 等待用户输入 b 返回
                 while True:
                     user_input = input('\n输入 b 返回主题列表: ').strip().lower()
