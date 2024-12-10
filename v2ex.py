@@ -207,7 +207,7 @@ class V2exCLI:
                                 content_lines = reply['content'].split('\n')
                                 for line in content_lines:
                                     print(f"          {line}")
-                        print('\n\n\n')
+                        print('\n')
                     
                 else:
                     print('\n暂无评论')
