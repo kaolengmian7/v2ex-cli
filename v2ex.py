@@ -308,18 +308,21 @@ class V2exCLI:
         return True
 
     def get_char(self):
-        """获取单个字符输入"""
+        """获取单个字符输入，如果raw模式失败则回退到基础输入模式"""
         if os.name == 'nt':  # Windows
             return msvcrt.getch().decode('utf-8')
         else:  # Unix/Mac
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
+            # 尝试使用raw模式
             try:
                 tty.setraw(sys.stdin.fileno())
-                ch = sys.stdin.read(1)
+            except (termios.error, tty.error):
+                print("\n注意: 高级输入模式不可用，自动切换到基础输入模式(需要回车)")
             finally:
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            return ch
+            return sys.stdin.read(1)
+
 
     def run(self):
         self.clear_screen()
