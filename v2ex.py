@@ -320,8 +320,9 @@ class V2exCLI:
             except (termios.error, tty.error):
                 print("\n注意: 高级输入模式不可用，自动切换到基础输入模式(需要回车)")
             finally:
+                ch = sys.stdin.read(1)
                 termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            return sys.stdin.read(1)
+            return ch
 
 
     def run(self):
