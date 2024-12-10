@@ -254,9 +254,16 @@ class V2exCLI:
         while char != '\r' and char != '\n':
             if char == '\x03':  # Ctrl+C
                 raise KeyboardInterrupt
-            sys.stdout.write(char)
-            sys.stdout.flush()
-            command += char
+            elif char == '\x7f' or char == '\x08':  # Delete or Backspace
+                if command:  # 只在有字符时才处理删除
+                    command = command[:-1]
+                    # 在终端中模拟删除效果
+                    sys.stdout.write('\b \b')  # 退格，写空格，再退格
+                    sys.stdout.flush()
+            else:
+                sys.stdout.write(char)
+                sys.stdout.flush()
+                command += char
             char = self.get_char()
         print()  # 换行
         
