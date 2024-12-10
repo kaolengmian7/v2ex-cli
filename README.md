@@ -22,9 +22,10 @@
 ## 使用方法
 
 1. 克隆仓库：https://github.com/kaolengmian7/v2ex-terminal.git
-2. 安装依赖：pip install
-3. 运行：python v2ex.py
-4. 快捷键：
+2. 安装依赖：pip install path/to/requirements.txt
+3. 在 v2ex.py 中修改 User-Agent 为你的浏览器 User-Agent
+4. 运行：python v2ex.py
+5. 快捷键：
 - `<` `>` - 翻页（无需回车）
 - `数字` - 查看主题详情
 - `b` - 返回主题列表

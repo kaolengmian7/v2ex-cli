@@ -1,0 +1,3 @@
+# Python 3.8 or higher is required
+requests==2.31.0
+beautifulsoup4==4.12.2
