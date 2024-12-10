@@ -238,7 +238,7 @@ class V2exCLI:
                     self.current_page += 1
                     self.display_topics()
                 else:
-                    print('已经是最后一页了')
+                    print('已经是最后一页了~')
                 return True
             elif char == '<':
                 # 上一页
@@ -246,7 +246,7 @@ class V2exCLI:
                     self.current_page -= 1
                     self.display_topics()
                 else:
-                    print('已经是第一页了')
+                    print('已经是第一页了~')
                 return True
 
         # 处理需要回车的命令
