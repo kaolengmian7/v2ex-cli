@@ -28,6 +28,18 @@ class V2exCLI:
         self.current_topic_comments = []  # 当前主题的所有评论
         self.current_topic_url = ''  # 当前查看的主题URL
         
+        # 获取终端大小
+        try:
+            import shutil
+            self.terminal_size = shutil.get_terminal_size()
+            # 减去顶部和底部的空间(标题、分页信息等)
+            self.available_height = self.terminal_size.lines - 8
+            # 每个主题占用3行(标题行、作者行、分隔线)
+            self.page_size = max(1, self.available_height // 4)
+        except:
+            # 如果无法获取终端大小，使用默认值
+            self.page_size = 10
+
     def save_cache(self):
         """保存主题列表到缓存文件"""
         cache_data = {
@@ -60,11 +72,21 @@ class V2exCLI:
     def display_topics(self):
         """显示主题列表"""
         self.clear_screen()
+        
+        # 重新获取终端大小(以防终端大小改变)
+        try:
+            import shutil
+            self.terminal_size = shutil.get_terminal_size()
+            self.available_height = self.terminal_size.lines - 8
+            self.page_size = max(1, self.available_height // 4)
+        except:
+            pass
+        
         print('\n主题列表:\n')
         
         # 计算当前页的起始和结束索引
         start_idx = (self.current_page - 1) * self.page_size
-        end_idx = start_idx + self.page_size
+        end_idx = min(start_idx + self.page_size, len(self.topics))
         page_topics = self.topics[start_idx:end_idx]
         
         # 显示当前页的主题
@@ -72,11 +94,12 @@ class V2exCLI:
             print(f'[{idx}] 标题: {topic["title"]} {topic["reply"]}')
             print(f'    作者: {topic["creator"]} | 创建时间: {topic["created_time"]}')
             print(f'    链接: {topic["url"]}')
-            print('-' * 80)
-            
+            print('-' * min(80, self.terminal_size.columns))
+        
         # 显示分页信息
         total_pages = (len(self.topics) + self.page_size - 1) // self.page_size
         print(f'\n当前第 {self.current_page}/{total_pages} 页')
+        print('提示：使用 < > 键翻页，输入数字查看主题详情，h 显示帮助')
         
     def get_topics(self):
         try:
@@ -205,13 +228,29 @@ class V2exCLI:
     def display_topic_detail(self, topic):
         self.clear_screen()
         
-        # 显示主题内容
-        print('\n' + '=' * 160)
-        print(f"标题: {topic['title']}")
-        print(f"作者: {topic['creator']} | 创建时间: {topic['created_time']}")
-        if hasattr(self, 'current_topic_content') and self.current_topic_content:
-            print(f"\n{self.current_topic_content.text.strip()}\n")
-        print('=' * 160)
+        # 重新获取终端大小
+        try:
+            self.terminal_size = shutil.get_terminal_size()
+            # 计算可用高度：总高度减去固定占用的行数
+            self.available_height = self.terminal_size.lines - 7
+            # 动态调整评论页大小，考虑每条评论平均占用5行
+            self.comment_page_size = max(1, self.available_height // 5)
+        except:
+            self.comment_page_size = 5
+        
+        # 只在第一页显示主题内容
+        if self.current_comment_page == 1:
+            print('\n' + '=' * min(160, self.terminal_size.columns))
+            print(f"标题: {topic['title']}")
+            print(f"作者: {topic['creator']} | 创建时间: {topic['created_time']}")
+            if hasattr(self, 'current_topic_content') and self.current_topic_content:
+                print(f"\n{self.current_topic_content.text.strip()}\n")
+            print('=' * min(160, self.terminal_size.columns))
+        else:
+            # 非第一页只显示简要信息
+            print('\n' + '-' * min(160, self.terminal_size.columns))
+            print(f"标题: {topic['title']}")
+            print('-' * min(160, self.terminal_size.columns))
         
         # 计算评论分页
         total_comments = len(self.current_topic_comments)
@@ -224,27 +263,32 @@ class V2exCLI:
             
             # 显示当前页的评论
             for comment in self.current_topic_comments[start_idx:end_idx]:
-                print('-' * 80)
+                print('-' * min(80, self.terminal_size.columns))
                 print(f"#{comment['no']} | 评论者: {comment['username']} | {comment['time']}")
+                
+                # 完整显示评论内容
                 content_lines = comment['content'].split('\n')
                 for line in content_lines:
                     print(f"  {line}")
                 
-                # 显示回复
+                # 显示所有回复
                 if comment['replies']:
                     for reply in comment['replies']:
                         print('     |')
                         print('     |->')
                         print(f"        #{reply['no']} | 评论者: {reply['username']} | {reply['time']}")
-                        content_lines = reply['content'].split('\n')
-                        for line in content_lines:
+                        reply_lines = reply['content'].split('\n')
+                        for line in reply_lines:
                             print(f"          {line}")
-                print('\n')
+                print()
         else:
             print('\n暂无评论')
         
-        print('=' * 80)
-        print('\n提示：使用 < > 键翻页，b 返回主题列表')
+        print('=' * min(80, self.terminal_size.columns))
+        if self.current_comment_page == 1:
+            print('\n提示：使用 < > 键翻页，b 返回主题列表')
+        else:
+            print(f'\n提示：使用 < > 键翻页，b 返回主题列表，当前第 {self.current_comment_page} 页')
 
     def handle_user_input(self, char):
         """处理用户输入的命令或主题编号"""
