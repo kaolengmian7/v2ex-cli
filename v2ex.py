@@ -23,6 +23,10 @@ class V2exCLI:
         self.load_cache()  # 初始化时加载缓存
         self.page_size = 12  # 每页显示的主题数量
         self.current_page = 1  # 当前页码
+        self.comment_page_size = 5  # 评论每页显示数量
+        self.current_comment_page = 1  # 当前评论页码
+        self.current_topic_comments = []  # 当前主题的所有评论
+        self.current_topic_url = ''  # 当前查看的主题URL
         
     def save_cache(self):
         """保存主题列表到缓存文件"""
@@ -66,6 +70,7 @@ class V2exCLI:
         # 显示当前页的主题
         for idx, topic in enumerate(page_topics, start_idx + 1):
             print(f'[{idx}] 标题: {topic["title"]} {topic["reply"]}')
+            print(f'    作者: {topic["creator"]} | 创建时间: {topic["created_time"]}')
             print(f'    链接: {topic["url"]}')
             print('-' * 80)
             
@@ -94,11 +99,24 @@ class V2exCLI:
                 reply_count = item.find('a', class_=['count_livid', 'count_orange'])
                 reply_text = f'[{reply_count.text} 回复]' if reply_count else '[0 回复]'
                 
+                # 获取创建者信息
+                creator = item.find('strong').find('a').text
+                
+                # 获取创建时间
+                topic_info = item.find('span', class_='topic_info')
+                time_text = topic_info.find('span', title=True)['title'] if topic_info else ''
+                
                 if topic_link:
                     title = topic_link.text.strip()
                     url = 'https://www.v2ex.com' + topic_link['href']
-                    # 存储主题信息
-                    self.topics.append({'title': title, 'url': url, 'reply': reply_text})
+                    # 存储主题信息，包含创建者和时间
+                    self.topics.append({
+                        'title': title, 
+                        'url': url, 
+                        'reply': reply_text,
+                        'creator': creator,
+                        'created_time': time_text
+                    })
             
             # 保存到缓存
             self.save_cache()
@@ -122,132 +140,159 @@ class V2exCLI:
                 return
             
             topic = self.topics[topic_index - 1]
-            response = requests.get(topic['url'], headers=self.headers)
-            response.raise_for_status()
             
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # 获取主题内容
-            topic_content = soup.find('div', class_='topic_content')
-            
-            # 获取评论列表
-            comments = soup.find_all('div', class_='cell', id=lambda x: x and x.startswith('r_'))
-            
-            # 构建两层评论结构
-            top_comments = []  # 顶层评论
-            reply_comments = {}  # 回复的评论，key 是被回复评论的编号
-            
-            # 分类评论
-            for comment in comments:
-                no_elem = comment.find('span', class_='no')
-                comment_no = no_elem.text if no_elem else '0'
+            # 如果是新主题，重置评论页码并获取评论
+            if self.current_topic_url != topic['url']:
+                self.current_topic_url = topic['url']
+                self.current_comment_page = 1
+                response = requests.get(topic['url'], headers=self.headers)
+                response.raise_for_status()
                 
-                username_elem = comment.find('strong')
-                username = username_elem.text if username_elem else '匿名用户'
+                soup = BeautifulSoup(response.text, 'html.parser')
                 
-                time_elem = comment.find('span', class_='ago')
-                comment_time = time_elem.text if time_elem else '未知时间'
+                # 获取主题内容
+                self.current_topic_content = soup.find('div', class_='topic_content')
                 
-                content_elem = comment.find('div', class_='reply_content')
-                content = content_elem.text.strip() if content_elem else '无内容'
+                # 获取评论列表
+                comments = soup.find_all('div', class_='cell', id=lambda x: x and x.startswith('r_'))
                 
-                comment_data = {
-                    'no': comment_no,
-                    'username': username,
-                    'time': comment_time,
-                    'content': content
-                }
+                # 构建评论结构
+                self.current_topic_comments = []
+                reply_comments = {}
                 
-                # 检查是否是回复
-                if content_elem and '@' in content:
-                    # 查找被回复的评论
-                    for prev_comment in comments:
-                        prev_username = prev_comment.find('strong').text if prev_comment.find('strong') else ''
-                        if f'@{prev_username}' in content:
-                            prev_no = prev_comment.find('span', class_='no').text
-                            if prev_no not in reply_comments:
-                                reply_comments[prev_no] = []
-                            reply_comments[prev_no].append(comment_data)
-                            break
+                # 分类评论
+                for comment in comments:
+                    no_elem = comment.find('span', class_='no')
+                    comment_no = no_elem.text if no_elem else '0'
+                    
+                    username_elem = comment.find('strong')
+                    username = username_elem.text if username_elem else '匿名用户'
+                    
+                    time_elem = comment.find('span', class_='ago')
+                    comment_time = time_elem.text if time_elem else '未知时间'
+                    
+                    content_elem = comment.find('div', class_='reply_content')
+                    content = content_elem.text.strip() if content_elem else '无内容'
+                    
+                    comment_data = {
+                        'no': comment_no,
+                        'username': username,
+                        'time': comment_time,
+                        'content': content,
+                        'replies': []
+                    }
+                    
+                    # 检查是否是回复
+                    if content_elem and '@' in content:
+                        # 查找被回复的评论
+                        for prev_comment in self.current_topic_comments:
+                            if f"@{prev_comment['username']}" in content:
+                                prev_comment['replies'].append(comment_data)
+                                break
+                        else:
+                            self.current_topic_comments.append(comment_data)
                     else:
-                        top_comments.append(comment_data)
-                else:
-                    top_comments.append(comment_data)
-            
-            if topic_content:
-                self.clear_screen()
-                
-                # 显示主题内容
-                print('\n' + '=' * 160)
-                print(f"标题: {topic['title']}")
-                print(f"\n{topic_content.text.strip()}\n")
-                print('=' * 160)
-                
-                # 显示评论
-                total_comments = len(comments)
-                if total_comments > 0:
-                    print(f"\n评论列表 (共 {total_comments} 条评论):\n")
-                    
-                    # 显示顶层评论及其回复
-                    for comment in top_comments:
-                        # 显示顶层评论
-                        print('-' * 80)  # 顶层评论之间的分隔线
-                        print(f"#{comment['no']} | 评论者: {comment['username']} | {comment['time']}")
-                        content_lines = comment['content'].split('\n')
-                        for line in content_lines:
-                            print(f"  {line}")
-                        
-                        # 显示回复（如果有）
-                        if comment['no'] in reply_comments:
-                            for reply in reply_comments[comment['no']]:
-                                # 回复缩进 8 个空格
-                                print('     |')
-                                print('     |->')
-                                print(f"        #{reply['no']} | 评论者: {reply['username']} | {reply['time']}")
-                                content_lines = reply['content'].split('\n')
-                                for line in content_lines:
-                                    print(f"          {line}")
-                        print('\n')
-                    
-                else:
-                    print('\n暂无评论')
-                    print('=' * 80)
+                        self.current_topic_comments.append(comment_data)
 
-                # 等待用户输入 b 返回
-                while True:
-                    user_input = input('\n输入 b 返回主题列表: ').strip().lower()
-                    if user_input == 'b':
-                        self.display_topics()
-                        return
-            else:
-                print('未找到主题内容')
+            # 显示当前页的评论
+            self.display_topic_detail(topic)
                 
         except requests.RequestException as e:
             print(f'获取主题详情失败: {e}')
         except Exception as e:
             print(f'解析主题详情失败: {e}')
 
+    def display_topic_detail(self, topic):
+        self.clear_screen()
+        
+        # 显示主题内容
+        print('\n' + '=' * 160)
+        print(f"标题: {topic['title']}")
+        print(f"作者: {topic['creator']} | 创建时间: {topic['created_time']}")
+        if hasattr(self, 'current_topic_content') and self.current_topic_content:
+            print(f"\n{self.current_topic_content.text.strip()}\n")
+        print('=' * 160)
+        
+        # 计算评论分页
+        total_comments = len(self.current_topic_comments)
+        total_pages = (total_comments + self.comment_page_size - 1) // self.comment_page_size
+        start_idx = (self.current_comment_page - 1) * self.comment_page_size
+        end_idx = min(start_idx + self.comment_page_size, total_comments)
+        
+        if total_comments > 0:
+            print(f"\n评论列表 (共 {total_comments} 条评论) - 第 {self.current_comment_page}/{total_pages} 页:\n")
+            
+            # 显示当前页的评论
+            for comment in self.current_topic_comments[start_idx:end_idx]:
+                print('-' * 80)
+                print(f"#{comment['no']} | 评论者: {comment['username']} | {comment['time']}")
+                content_lines = comment['content'].split('\n')
+                for line in content_lines:
+                    print(f"  {line}")
+                
+                # 显示回复
+                if comment['replies']:
+                    for reply in comment['replies']:
+                        print('     |')
+                        print('     |->')
+                        print(f"        #{reply['no']} | 评论者: {reply['username']} | {reply['time']}")
+                        content_lines = reply['content'].split('\n')
+                        for line in content_lines:
+                            print(f"          {line}")
+                print('\n')
+        else:
+            print('\n暂无评论')
+        
+        print('=' * 80)
+        print('\n提示：使用 < > 键翻页，b 返回主题列表')
+
     def handle_user_input(self, char):
         """处理用户输入的命令或主题编号"""
         # 处理单字符命令（无需回车的命令）
         if char in ['>', '<']:
-            if char == '>':
-                # 下一页
-                total_pages = (len(self.topics) + self.page_size - 1) // self.page_size
-                if self.current_page < total_pages:
-                    self.current_page += 1
-                    self.display_topics()
-                else:
-                    print('已经是最后一页了~')
+            if self.current_topic_url:  # 在主题详情页面
+                total_comments = len(self.current_topic_comments)
+                total_pages = (total_comments + self.comment_page_size - 1) // self.comment_page_size
+                
+                if char == '>' and self.current_comment_page < total_pages:
+                    self.current_comment_page += 1
+                    # 从当前主题URL中提取主题ID的正则表达式
+                    topic_id_match = re.search(r'/t/(\d+)', self.current_topic_url)
+                    if topic_id_match:
+                        topic_id = int(topic_id_match.group(1))
+                        # 查找对应的主题
+                        for topic in self.topics:
+                            if str(topic_id) in topic['url']:
+                                self.display_topic_detail(topic)
+                                break
+                elif char == '<' and self.current_comment_page > 1:
+                    self.current_comment_page -= 1
+                    topic_id_match = re.search(r'/t/(\d+)', self.current_topic_url)
+                    if topic_id_match:
+                        topic_id = int(topic_id_match.group(1))
+                        for topic in self.topics:
+                            if str(topic_id) in topic['url']:
+                                self.display_topic_detail(topic)
+                                break
                 return True
-            elif char == '<':
-                # 上一页
-                if self.current_page > 1:
-                    self.current_page -= 1
-                    self.display_topics()
-                else:
-                    print('已经是第一页了~')
-                return True
+            else:  # 在主题列表页面
+                if char == '>':
+                    # 下一页
+                    total_pages = (len(self.topics) + self.page_size - 1) // self.page_size
+                    if self.current_page < total_pages:
+                        self.current_page += 1
+                        self.display_topics()
+                    else:
+                        print('已经是最后一页了~')
+                    return True
+                elif char == '<':
+                    # 上一页
+                    if self.current_page > 1:
+                        self.current_page -= 1
+                        self.display_topics()
+                    else:
+                        print('已经是第一页了~')
+                    return True
 
         # 处理需要回车的命令
         command = ''
